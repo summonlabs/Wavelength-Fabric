@@ -1,0 +1,46 @@
+# Build & artifact output
+build/
+build-*/
+out/
+*.obj
+*.o
+*.exe
+*.pdb
+*.ilk
+*.lib
+*.dll
+*.exp
+*.suo
+*.user
+.vs/
+CMakeCache.txt
+cmake_install.cmake
+CMakeFiles/
+CTestTestfile.cmake
+Testing/
+
+# Sanitizer / coverage debris
+*.log
+*.tmp
+*.dmp
+*.profraw
+*.profdata
+*.gcda
+*.gcno
+
+# Runtime state produced by examples, tools and proofs
+*.wvf
+*.wvf.tmp
+state/
+install/
+dist/
+
+# Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Python / misc
+__pycache__/
+*.pyc

@@ -1,0 +1,24 @@
+Wavelength Fabric
+
+Copyright 2026 Summon Software Labs
+
+Wavelength Fabric is an open-source, vendor-neutral runtime for wavelength and
+channel allocation, reservation, authority, conflict detection, and lifecycle
+over abstract optical spectrum resources.
+
+This product is licensed under the Apache License, Version 2.0. See the
+LICENSE file in this distribution for the full license text.
+
+Wavelength Fabric does not control optical hardware. It does not own physical
+connectivity lifecycle, transceiver identity, route computation across optical
+resources, or measured link quality. Those concerns belong to adjacent
+runtimes, and Wavelength Fabric consumes their facts only through narrow,
+explicitly supplied inputs.
+
+Wavelength Fabric does not collect or transmit any telemetry. All telemetry is
+written to local files chosen by the operator and never leaves the machine
+running the software.
+
+Wavelength Fabric accepts contributions from individuals and organizations on
+the terms of the Apache License 2.0 without requiring a Contributor License
+Agreement (CLA). See CONTRIBUTING.md for contribution guidance.
