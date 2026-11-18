@@ -16,6 +16,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <iostream>
 #include <map>
 #include <sstream>
@@ -274,6 +275,40 @@ struct LocalClient {
   return 0;
 }
 
+// An in-process server stopped while a client is connected and idle: stop()
+// has to end the worker's receive, or serve() waits until the client leaves.
+void checkStopWithAnIdleClient(Report& report) {
+  report.note("step 0: stop an in-process server with an idle client connected");
+  SpectrumRuntime runtime;
+  ServerConfig config;
+  config.address = "127.0.0.1";
+  config.port = 0;
+  config.workerThreads = 2;
+  SpectrumServer server(runtime, config);
+  const Status started = server.start();
+  report.check(started.ok(), "the in-process server starts");
+  if (!started.ok()) return;
+  std::promise<void> served;
+  std::future<void> done = served.get_future();
+  std::thread serving([&server, &served]() {
+    server.serve();
+    served.set_value();
+  });
+  // One completed request proves a worker serves this client; the worker then
+  // waits in a receive for the client's next frame.
+  LocalClient idle;
+  const bool answered = idle.connect(server.port());
+  server.stop();
+  const bool returned = done.wait_for(std::chrono::seconds(10)) == std::future_status::ready;
+  // Closing the client releases a serve() that is still waiting on it.
+  idle.client.close();
+  serving.join();
+  report.check(answered, "an idle client completed one request");
+  // stop() only set a flag: the worker stayed in its receive, so serve()
+  // waited in its joins until the client left.
+  report.check(returned, "serve() returns within 10 s of stop() with the client still connected");
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -305,6 +340,8 @@ int main(int argc, char** argv) {
   const std::string statePath = (workDirectory / "state.wvf").string();
   const SpectrumDomainId domain(1);
 
+  checkStopWithAnIdleClient(report);
+
   report.note("step 1: start the first server process");
   std::uint16_t port = pickFreePort();
   report.check(port != 0, "a loopback port was reserved for the server");
@@ -323,6 +360,17 @@ int main(int argc, char** argv) {
   const std::uint64_t incarnation1 = first.incarnation;
   report.check(incarnation1 != 0 && epoch1 != 0, "server 1 published a non-zero fence");
   port = first.port;
+  {
+    // Two servers must never share one listening port: while server 1
+    // listens, a second bind on its port fails.
+    Socket stray;
+    std::uint16_t strayPort = 0;
+    ListenOptions taken;
+    taken.address = "127.0.0.1";
+    taken.port = port;
+    report.check(!listenTcp(taken, stray, strayPort).ok(),
+                 "a second listener cannot take server 1's port");
+  }
 
   report.note("step 2: register the spectrum model over the transport");
   LocalClient local;

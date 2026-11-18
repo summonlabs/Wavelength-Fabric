@@ -17,6 +17,7 @@
 
 #include <wavelength_fabric/serialization.hpp>
 
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -24,6 +25,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -692,6 +694,30 @@ WF_TEST(a_save_after_recovery_produces_a_loadable_image) {
   const std::vector<AuditRecord> thirdAudits = third.audit(AuditSequence(0), 0);
   WF_REQUIRE(!thirdAudits.empty());
   WF_CHECK(thirdAudits.back().kind == AuditKind::RecoveryPerformed);
+}
+
+WF_TEST(a_save_waits_for_a_reader_of_the_image) {
+  Store store("reader");
+  SpectrumRuntime runtime(configFor(store.path()));
+  (void)populate(runtime);
+  WF_REQUIRE(runtime.save().ok());
+  bool readerOpened = false;
+  bool saved = false;
+  {
+    // An inspection of the image holds it open while the next save replaces
+    // it, and closes it shortly after.
+    std::ifstream reader(store.path(), std::ios::binary);
+    readerOpened = reader.is_open();
+    std::thread saver([&runtime, &saved] { saved = runtime.save().ok(); });
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    reader.close();
+    saver.join();
+  }
+  WF_CHECK(readerOpened);
+  // The replacement waits for the reader instead of failing the save (with
+  // durable commits, the save that every mutation depends on).
+  WF_CHECK(saved);
+  WF_CHECK(!store.temporaryExists());
 }
 
 WF_TEST(a_missing_image_is_reported_as_missing_not_as_corruption) {

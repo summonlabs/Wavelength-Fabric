@@ -226,16 +226,20 @@ Status listenTcp(const ListenOptions& options, Socket& out, std::uint16_t& bound
   if (handle == kInvalidNativeSocket) return socketFailure("socket");
   Socket owner(toHandle(handle));
 #ifdef _WIN32
-  const BOOL reuse = TRUE;
-  const int reuseResult = ::setsockopt(handle, SOL_SOCKET, SO_REUSEADDR,
-                                       reinterpret_cast<const char*>(&reuse),
-                                       static_cast<SockLen>(sizeof(reuse)));
+  // SO_REUSEADDR on Windows lets a second socket bind a port that is still
+  // listening; exclusive use makes that second bind fail instead.
+  const BOOL exclusive = TRUE;
+  const int reuseResult = ::setsockopt(handle, SOL_SOCKET, SO_EXCLUSIVEADDRUSE,
+                                       reinterpret_cast<const char*>(&exclusive),
+                                       static_cast<SockLen>(sizeof(exclusive)));
+  const char* const reuseOption = "setsockopt(SO_EXCLUSIVEADDRUSE)";
 #else
   const int reuse = 1;
   const int reuseResult = ::setsockopt(handle, SOL_SOCKET, SO_REUSEADDR, &reuse,
                                        static_cast<SockLen>(sizeof(reuse)));
+  const char* const reuseOption = "setsockopt(SO_REUSEADDR)";
 #endif
-  if (reuseResult != 0) return socketFailure("setsockopt(SO_REUSEADDR)");
+  if (reuseResult != 0) return socketFailure(reuseOption);
   sockaddr_in local{};
   local.sin_family = AF_INET;
   local.sin_addr = address;
@@ -411,6 +415,11 @@ Status recvAll(const Socket& socket, std::span<std::uint8_t> data) {
 void shutdownBoth(const Socket& socket) noexcept {
   if (!socket.valid()) return;
   ::shutdown(fromHandle(socket.handle()), kShutdownBoth);
+#ifdef _WIN32
+  // shutdown() does not end a recv() another thread is already blocked in on
+  // Windows; cancelling the socket's pending I/O does.
+  (void)::CancelIoEx(reinterpret_cast<HANDLE>(fromHandle(socket.handle())), nullptr);
+#endif
 }
 
 Status setNoDelay(const Socket& socket) {

@@ -3,11 +3,14 @@
 #endif
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <system_error>
+#include <thread>
 #include <vector>
 
 #ifdef _WIN32
@@ -552,8 +555,27 @@ Status writeStateFile(const std::string& path, const std::vector<std::uint8_t>& 
     std::filesystem::remove(temporary, ignored);
     return fail(StatusCode::IoError, "cannot flush " + temporary);
   }
+  // While a reader has the state file open (an inspection, an antivirus or
+  // indexing scan) the rename fails on Windows until the reader closes it, so
+  // it is retried for a bounded time (about 2 s); a directory in the way is not
+  // transient and fails at once.
   std::error_code error;
-  std::filesystem::rename(temporary, path, error);
+  for (int attempt = 0;; ++attempt) {
+    error.clear();
+    std::filesystem::rename(temporary, path, error);
+    if (!error) break;
+#if defined(_WIN32)
+    // ERROR_ACCESS_DENIED, ERROR_SHARING_VIOLATION and ERROR_LOCK_VIOLATION.
+    std::error_code kind;
+    const bool transient = error.category() == std::system_category() &&
+                           (error.value() == 5 || error.value() == 32 || error.value() == 33) &&
+                           !std::filesystem::is_directory(path, kind);
+#else
+    const bool transient = false;
+#endif
+    if (!transient || attempt >= 100) break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  }
   if (error) {
     std::filesystem::remove(temporary, ignored);
     return fail(StatusCode::IoError,

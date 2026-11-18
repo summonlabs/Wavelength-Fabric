@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <string>
@@ -443,7 +444,16 @@ Status SpectrumServer::start() {
 }
 
 void SpectrumServer::stop() {
-  stopping_.store(true, std::memory_order_release);
+  {
+    // Workers wait in a receive with no deadline, so a flag alone left serve()
+    // waiting in its joins until every idle client had left. A connection a
+    // worker lists after this sees the flag before it receives.
+    const std::lock_guard<std::mutex> guard(mutex_);
+    stopping_.store(true, std::memory_order_release);
+    for (Socket* connection : live_) {
+      shutdownBoth(*connection);
+    }
+  }
   wakeup_.notify_all();
 }
 
@@ -495,10 +505,16 @@ void SpectrumServer::workerLoop() {
       }
       connection = std::move(pending_.front());
       pending_.pop_front();
+      live_.push_back(&connection);
     }
     activeConnections_.fetch_add(1);
     serveConnection(connection);
     activeConnections_.fetch_sub(1);
+    {
+      // Delisted before the socket closes at the end of this iteration.
+      const std::lock_guard<std::mutex> guard(mutex_);
+      live_.erase(std::remove(live_.begin(), live_.end(), &connection), live_.end());
+    }
   }
 }
 

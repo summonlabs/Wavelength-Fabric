@@ -135,6 +135,9 @@ class SpectrumServer {
   mutable std::mutex mutex_;
   std::condition_variable wakeup_;
   std::deque<Socket> pending_;
+  // Connections a worker is serving, so that stop() can end the worker's
+  // receive. Guarded by mutex_.
+  std::vector<Socket*> live_;
   std::vector<std::thread> workers_;
   bool started_{false};
   std::atomic<bool> stopping_{false};

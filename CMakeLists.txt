@@ -31,6 +31,23 @@ else()
 endif()
 
 # ---------------------------------------------------------------------------
+# AddressSanitizer. The flags apply to the targets declared after this block,
+# so it comes before the libraries: programs built with the sanitizer do not
+# link against libraries built without it (LNK2038 with MSVC).
+# ---------------------------------------------------------------------------
+if(WAVELENGTH_FABRIC_ENABLE_ASAN)
+  if(MSVC)
+    add_compile_options(/fsanitize=address /Zi)
+    # The linker does not know /fsanitize=address (LNK4044); /DEBUG avoids
+    # LNK4302 for the sanitizer objects.
+    add_link_options(/INCREMENTAL:NO /DEBUG)
+  else()
+    add_compile_options(-fsanitize=address -fno-omit-frame-pointer -g)
+    add_link_options(-fsanitize=address)
+  endif()
+endif()
+
+# ---------------------------------------------------------------------------
 # Core library: vendor-neutral spectrum allocation, reservation and lifecycle.
 # The core is transport-free and does not touch sockets or processes.
 # ---------------------------------------------------------------------------
@@ -89,19 +106,6 @@ set_target_properties(wavelength_fabric_transport PROPERTIES
 target_compile_options(wavelength_fabric_transport PRIVATE ${WF_WARN_FLAGS})
 if(WIN32)
   target_link_libraries(wavelength_fabric_transport PUBLIC ws2_32)
-endif()
-
-# ---------------------------------------------------------------------------
-# AddressSanitizer
-# ---------------------------------------------------------------------------
-if(WAVELENGTH_FABRIC_ENABLE_ASAN)
-  if(MSVC)
-    add_compile_options(/fsanitize=address /O1 /Zi)
-    add_link_options(/fsanitize=address)
-  else()
-    add_compile_options(-fsanitize=address -fno-omit-frame-pointer -g)
-    add_link_options(-fsanitize=address)
-  endif()
 endif()
 
 # ---------------------------------------------------------------------------

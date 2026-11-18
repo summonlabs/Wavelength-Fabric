@@ -88,11 +88,14 @@ struct Registrar {
     }                                                                              \
   } while (false)
 
+// The operands are copied: a reference would dangle when an operand reads a
+// member of a temporary, as in WF_CHECK_EQ(runtime.reservation(id)->state, x).
+// They are not const, so comparing two constants is not a constant condition.
 #define WF_CHECK_EQ(actual, expected)                                                  \
   do {                                                                                 \
     ::wf_test::Harness::instance().noteCheck();                                        \
-    const auto& wf_actual = (actual);                                                  \
-    const auto& wf_expected = (expected);                                              \
+    auto wf_actual = (actual);                                                         \
+    auto wf_expected = (expected);                                                     \
     if (!(wf_actual == wf_expected)) {                                                 \
       std::ostringstream wf_stream;                                                    \
       wf_stream << #actual " != " #expected << " (actual=" << wf_actual                 \
